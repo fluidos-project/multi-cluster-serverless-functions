@@ -68,7 +68,7 @@ The installation was initiated by running `setup.sh` as outlined in [2], with so
 - For the Venice cluster, an additional port mapping was added to facilitate HTTP communication.
 
 The YAML configuration for the Venice cluster was as follows:
-```
+```yaml
 # cluster_with_worker.yaml
 
 kind: Cluster
@@ -87,7 +87,7 @@ nodes:
 ```
 For the Naples and Florence clusters, we used:
 
-```
+```yaml
 # cluster_with_worker2.yaml
 
 kind: Cluster
@@ -113,13 +113,13 @@ liqoctl offload namespace liqo-demo  --namespace-mapping-strategy EnforceSameNam
       --pod-offloading-strategy LocalAndRemote \
       --selector 'topology.liqo.io/region in (center,south)'  --kubeconfig=$KUBECONFIG
 ```
-![Liqo multi-cluster environment]()
+![Liqo multi-cluster environment](figures/multicluster.png)
 
 Figure 1: Liqo multi-cluster environment. 
 
 From the perspective of the Venice cluster, there are 4 nodes: a control plan node, worker node, and two virtual nodes created by Liqo as indicated by the log below.
 
-```
+```shell
 NODE            TAINTS
 
 liqo-florence	        [map[effect:NoExecute key:virtual-node.liqo.io/not-allowed value:true]]
@@ -132,7 +132,7 @@ This means that the Florence and Naples clusters are now accessible from the Ven
 
 Finally, we should notice that for each cluster we have a unique kube config file. We will use these files to check the state inside each individual cluster.
 
-```
+```shell
 export KUBECONFIG=<path>/config/kubeconf/liqo_kubeconf_venice  
 export KUBECONFIG_FLORENCE=<path>/config/kubeconf/liqo_kubeconf_florence
 export KUBECONFIG_NAPLES=<path>/config/kubeconf/liqo_kubeconf_naples
