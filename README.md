@@ -63,6 +63,98 @@ A minor modification was made to Fission's standard installation process [3] to 
 
 #### Installation Procedure
 
+The installation was initiated by running `setup.sh` as outlined in [2], with some modifications (highlighted in blue):
+- Each cluster was configured with a worker node.
+- For the Venice cluster, an additional port mapping was added to facilitate HTTP communication.
+
+The YAML configuration for the Venice cluster was as follows:
+```
+# cluster_with_worker.yaml
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  serviceSubnet: "10.90.0.0/12"
+  podSubnet: "10.200.0.0/16"
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.25.0
+    extraPortMappings:
+    - containerPort: 31314
+      hostPort: 30090
+  - role: worker
+    image: kindest/node:v1.25.0
+```
+For the Naples and Florence clusters, we used:
+
+```
+# cluster_with_worker2.yaml
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  serviceSubnet: "10.90.0.0/12"
+  podSubnet: "10.200.0.0/16"
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.25.0
+  - role: worker
+    image: kindest/node:v1.25.0
+```
+After the creation of clusters in Kind, Liqo is installed in each cluster. Subsequently, Fission was installed in the Venice cluster and the `liqo-demo` namespace was added using the following command
+```
+helm install --version v1.19.0 --namespace $FISSION_NAMESPACE fission \
+  --set serviceType=NodePort,routerServiceType=NodePort \
+  --set "additionalFissionNamespaces={liqo-demo}" fission-charts/fission-all --kubeconfig=$KUBECONFIG
+```
+Peering relationships were established between Venice and both Florence and Naples clusters (Figure 1). The `liqo-demo` namespace was then offloaded from Venice to these clusters using the following `liqoctl` command.
+```
+liqoctl offload namespace liqo-demo  --namespace-mapping-strategy EnforceSameName \
+      --pod-offloading-strategy LocalAndRemote \
+      --selector 'topology.liqo.io/region in (center,south)'  --kubeconfig=$KUBECONFIG
+```
+![Liqo multi-cluster environment]()
+
+Figure 1: Liqo multi-cluster environment. 
+
+From the perspective of the Venice cluster, there are 4 nodes: a control plan node, worker node, and two virtual nodes created by Liqo as indicated by the log below.
+
+```
+NODE            TAINTS
+
+liqo-florence	        [map[effect:NoExecute key:virtual-node.liqo.io/not-allowed value:true]]
+liqo-naples             [map[effect:NoExecute key:virtual-node.liqo.io/not-allowed value:true]]
+venice-control-plane    [map[effect:NoSchedule key:node-role.kubernetes.io/control-plane]]
+venice-worker          <none>
+```
+
+This means that the Florence and Naples clusters are now accessible from the Venice cluster.
+
+Finally, we should notice that for each cluster we have a unique kube config file. We will use these files to check the state inside each individual cluster.
+
+```
+export KUBECONFIG=<path>/config/kubeconf/liqo_kubeconf_venice  
+export KUBECONFIG_FLORENCE=<path>/config/kubeconf/liqo_kubeconf_florence
+export KUBECONFIG_NAPLES=<path>/config/kubeconf/liqo_kubeconf_naples
+
+kubectl get pods -A -o wide --kubeconfig $KUBECONFIG
+kubectl get pods -A -o wide --kubeconfig $KUBECONFIG_FLORENCE
+kubectl get pods -A -o wide --kubeconfig $KUBECONFIG_NAPLES
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
