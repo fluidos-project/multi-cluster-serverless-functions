@@ -102,13 +102,13 @@ nodes:
     image: kindest/node:v1.25.0
 ```
 After the creation of clusters in Kind, Liqo is installed in each cluster. Subsequently, Fission was installed in the Venice cluster and the `liqo-demo` namespace was added using the following command
-```
+```shell
 helm install --version v1.19.0 --namespace $FISSION_NAMESPACE fission \
   --set serviceType=NodePort,routerServiceType=NodePort \
   --set "additionalFissionNamespaces={liqo-demo}" fission-charts/fission-all --kubeconfig=$KUBECONFIG
 ```
 Peering relationships were established between Venice and both Florence and Naples clusters (Figure 1). The `liqo-demo` namespace was then offloaded from Venice to these clusters using the following `liqoctl` command.
-```
+```shell
 liqoctl offload namespace liqo-demo  --namespace-mapping-strategy EnforceSameName \
       --pod-offloading-strategy LocalAndRemote \
       --selector 'topology.liqo.io/region in (center,south)'  --kubeconfig=$KUBECONFIG
@@ -142,11 +142,96 @@ kubectl get pods -A -o wide --kubeconfig $KUBECONFIG_FLORENCE
 kubectl get pods -A -o wide --kubeconfig $KUBECONFIG_NAPLES
 ```
 
+### Conducting the Experiment
+We go through the steps of creating an environment for our Hello World application, then loading that application in the environment pod(s), and finally invoking the application to see if we get the expected result in the terminal screen.
 
+First, we create a Fission `Node.js` environment pods pool of size nine in the `liqo-demo` namespace using the following command
 
+```shell
+fission env create --name nodejs --image fission/node-env -n liqo-demo --poolsize=9
+```
 
+When we print out pod status information in the Venice cluster and specifically have a look at the pods in the `liqo-demo` namespace, we see that the environments pods have been distributed across all three clusters as shown in the column NODE in the log below
 
+```shell
+NAMESPACE  NAME                                      STATUS   IP          NODE
 
+liqo-demo     poolmgr-nodejs-liqo-demo-cc9b-776vq   2/2     Running    10.200.1.29   venice-worker
+liqo-demo     poolmgr-nodejs-liqo-demo-cc9b-d9lbl   2/2     Running    10.200.1.31   venice-worker          
+liqo-demo     poolmgr-nodejs-liqo-demo-cc9b-x9ph8   2/2     Running    10.200.1.30   venice-worker          
+
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-6lmlb   2/2     Running     10.204.1.18   liqo-naples
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-dhx4t   2/2     Running     10.204.1.20   liqo-naples            
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-xdjf2   2/2     Running     10.204.1.19   liqo-naples            
+
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-4kk4s   2/2     Running     10.202.1.19   liqo-florence          
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-dm7sl   2/2     Running     10.202.1.18   liqo-florence          
+liqo-demo    poolmgr-nodejs-liqo-demo-cc9b-r2dsz   2/2     Running     10.202.1.17   liqo-florence 
+```
+
+To verify we can check the pods in the Florence cluster
+
+```shell
+NAMESPACE      NAME                                STATUS   IP          NODE
+
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-4kk4s    2/2   Running   10.200.1.19   florence-worker          
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-dm7sl    2/2   Running   10.200.1.18   florence-worker          
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-r2dsz    2/2   Running   10.200.1.17   florence-worker
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-6lmlb   2/2     Running   10.200.1.18   naples-worker          
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-dhx4t   2/2     Running   10.200.1.20   naples-worker          
+liqo-demo   poolmgr-nodejs-liqo-demo-cc9b-xdjf2   2/2     Running   10.200.1.19   naples-worker 
+```
+
+We observe that the pods created in these clusters match the virtual pods in the Florence cluster. 
+
+Second, we created a serverless function and loaded it in the environment pods using the following command
+```shell
+fission function create --name hello-js --env nodejs --code hello.js -n liqo-demo
+```
+The previous command expects a file with code similar to 
+```javascript
+
+// hello.js
+module.exports = async function(context) {
+    return {
+        status: 200,
+        body: "hello, world!\n"
+    };
+}
+```
+Then, we can set an HTTP trigger to this function
+```shell
+fission httptrigger create --url /hello --function hello-js --name hellotrigger -n liqo-demo
+```
+and triggered it using either of the following commands (in our implementation, we triggered it with both commands)
+```shell
+fission function test --name hello-js -n liqo-demo
+curl http://localhost:30090/hello
+```
+The output on the terminal screen is
+
+```shell
+Package 'hello-js-c6c60fc6-622c-4aa3-95a0-1b06255924e7' created
+function 'hello-js' created
+hello, world!
+trigger 'hellotrigger' created
+hello, world!
+```
+And we obtain the expected results which show that we can run serverless functions in a multi-cluster environment.
+
+## Conclusion
+The integration of Fission and Liqo presents an innovative approach to deploying serverless functions in a multi-cluster Kubernetes environment. Our experiment showcased the seamless distribution of environment pods across different clusters—Venice, Naples, and Florence. This intricate orchestration was achieved by leveraging the unique features of both Fission and Liqo, allowing for efficient resource allocation, rapid scalability, and dynamic deployment of serverless applications across federated clusters.
+
+We found that the innate compatibility between Fission's Kubernetes-native structure and Liqo's cross-cluster federation forms a robust infrastructure, ideal for achieving the goals of FLUIDOS. The significance of our findings lies in the transformative potential for modern cloud-native applications. As the demand for rapid deployment and scalable solutions continues to grow, the Fission-Liqo integration serves as a prototype for achieving seamless, efficient, and dynamic serverless computing in a multi-cluster Kubernetes environment.
+
+While this study demonstrates the feasibility of running serverless functions in a multi-cluster environment, future research can delve deeper into optimizing performance, security considerations, and expanding the range of applications that can benefit from such integration.
+
+## References 
+
+[1] https://fission.io/docs/installation/ (section: Run an example)<br>
+[2] https://docs.liqo.io/en/v0.9.3/examples/offloading-with-policies.html<br>
+[3] https://fission.io/docs/usage/spec/podspec/toleration/<br>
+[4] https://fission.io/docs/architecture/executor/<br>
 
 
 
